@@ -8,6 +8,7 @@ from agent import (
     build_reflection_prompt,
     memory_text,
     similar_memory_query,
+    validate_reflection,
     vector_literal,
 )
 from lambda_function import handler
@@ -29,6 +30,22 @@ class DreamInputTests(unittest.TestCase):
     def test_rejects_non_uuid_user(self):
         with self.assertRaisesRegex(ValueError, "valid UUID"):
             DreamInput.from_payload({"user_id": "u", "scene": "a boat"})
+
+    def test_rejects_non_object_and_oversized_optional_fields(self):
+        with self.assertRaisesRegex(ValueError, "JSON object"):
+            DreamInput.from_payload([])
+        with self.assertRaisesRegex(ValueError, "emotion"):
+            DreamInput.from_payload(
+                {"user_id": str(uuid4()), "scene": "a boat", "emotion": "x" * 201}
+            )
+        with self.assertRaisesRegex(ValueError, "real_life_context"):
+            DreamInput.from_payload(
+                {
+                    "user_id": str(uuid4()),
+                    "scene": "a boat",
+                    "real_life_context": "x" * 1_201,
+                }
+            )
 
 
 class MemoryBoundaryTests(unittest.TestCase):
@@ -58,6 +75,18 @@ class MemoryBoundaryTests(unittest.TestCase):
         literal = vector_literal([0.0] * 1024)
         self.assertTrue(literal.startswith("[0,"))
 
+    def test_reflection_must_match_bounded_json_schema(self):
+        valid = validate_reflection(
+            '{"summary":"A calm scene.","recurring_patterns":[],"one_gentle_question":"What felt calm?"}'
+        )
+        self.assertIn('"summary": "A calm scene."', valid)
+        with self.assertRaisesRegex(RuntimeError, "valid JSON"):
+            validate_reflection("not-json")
+        with self.assertRaisesRegex(RuntimeError, "unexpected schema"):
+            validate_reflection(
+                '{"summary":"A","recurring_patterns":[],"one_gentle_question":"Q","prediction":"bad"}'
+            )
+
 
 class LambdaHandlerTests(unittest.TestCase):
     def test_get_returns_demo_page(self):
@@ -84,6 +113,27 @@ class LambdaHandlerTests(unittest.TestCase):
     def test_invalid_payload_returns_400(self):
         result = handler({"body": "not-json"}, None)
         self.assertEqual(result["statusCode"], 400)
+
+        result = handler({"body": "[]"}, None)
+        self.assertEqual(result["statusCode"], 400)
+
+    def test_unsupported_method_returns_405(self):
+        result = handler(
+            {"requestContext": {"http": {"method": "DELETE"}}},
+            None,
+        )
+        self.assertEqual(result["statusCode"], 405)
+
+    def test_none_headers_do_not_raise(self):
+        with patch.dict("os.environ", {"DEMO_API_KEY": "secret"}, clear=True):
+            result = handler(
+                {
+                    "headers": None,
+                    "body": '{"user_id":"%s","scene":"a blue whale"}' % uuid4(),
+                },
+                None,
+            )
+        self.assertEqual(result["statusCode"], 401)
 
     def test_demo_key_is_required_when_configured(self):
         with patch.dict("os.environ", {"DEMO_API_KEY": "secret"}, clear=True):
