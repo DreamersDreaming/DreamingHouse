@@ -55,6 +55,13 @@ Resources:
                 - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.nova-lite-v1:0
                 - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0
       Events:
+        DemoPage:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RecallApi
+            Path: /
+            Method: GET
+            PayloadFormatVersion: '2.0'
         Reflect:
           Type: HttpApi
           Properties:
@@ -67,3 +74,6 @@ Outputs:
   ReflectEndpoint:
     Description: POST endpoint for the private judge demo
     Value: !Sub https://${RecallApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/reflect
+  DemoUrl:
+    Description: Browser demo for judges
+    Value: !Sub https://${RecallApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/
