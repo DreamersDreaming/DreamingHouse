@@ -17,6 +17,14 @@ def handler(event, _context):
         ).upper()
         if method == "GET":
             return html_response()
+        if method != "POST":
+            return response(
+                405,
+                {
+                    "status": "method_not_allowed",
+                    "message": "Only GET and POST are supported.",
+                },
+            )
         enforce_demo_api_key(event)
         body = event.get("body", event)
         if isinstance(body, str):
@@ -67,7 +75,9 @@ def enforce_demo_api_key(event: dict) -> None:
     expected = os.environ.get("DEMO_API_KEY", "")
     if not expected:
         return
-    headers = {str(k).lower(): str(v) for k, v in event.get("headers", {}).items()}
+    headers = {
+        str(k).lower(): str(v) for k, v in (event.get("headers") or {}).items()
+    }
     supplied = headers.get("x-doream-demo-key", "")
     if not hmac.compare_digest(supplied, expected):
         raise PermissionError("invalid demo API key")
