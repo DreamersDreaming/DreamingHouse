@@ -79,6 +79,11 @@ curl -X POST "$REFLECT_ENDPOINT" \
 
 Never use production Doream user data for the demo. The judge key and database URL must not be committed.
 
+For AWS CloudShell in Sydney, `scripts/deploy_cloudshell.sh` performs the same
+schema-and-SAM deployment with hidden database input and a generated judge key.
+It prints the key only after deployment so it can be copied into the private
+judge instructions; do not paste it into source control or public Devpost text.
+
 ## Deployment evidence gate
 
 Do not claim a working submission until all of these are real:
