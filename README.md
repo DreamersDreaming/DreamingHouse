@@ -38,14 +38,15 @@ Tests exercise the prompt contract, request validation, and ownership-scoped SQL
 
 ## Configure CockroachDB Cloud
 
-1. Create a CockroachDB Cloud cluster and a dedicated database/user for this demo.
+1. Create a CockroachDB Cloud cluster.
 2. Enable vector indexes when required by the selected cluster version:
 
    ```sql
    SET CLUSTER SETTING feature.vector_index.enabled = true;
    ```
 
-3. Export the least-privilege connection string, then apply the idempotent schema:
+3. For a manual deployment, create a dedicated least-privilege application user,
+   export its connection string, then apply the idempotent schema:
 
    ```bash
    export DATABASE_URL='postgresql://...'
@@ -79,10 +80,14 @@ curl -X POST "$REFLECT_ENDPOINT" \
 
 Never use production Doream user data for the demo. The judge key and database URL must not be committed.
 
-For AWS CloudShell in Sydney, `scripts/deploy_cloudshell.sh` performs the same
-schema-and-SAM deployment with hidden database input and a generated judge key.
-It prints the key only after deployment so it can be copied into the private
-judge instructions; do not paste it into source control or public Devpost text.
+For AWS CloudShell in Sydney, `scripts/deploy_cloudshell.sh` accepts the cluster
+administrator URL through a hidden prompt. `scripts/bootstrap_database.py`
+creates the `doream_recall` database, rotates a generated password for the
+dedicated `doream_app` user, applies the schema as administrator, grants only
+CONNECT/USAGE/SELECT/INSERT, and passes only that restricted URL to Lambda. The
+deploy script prints the judge key only after deployment so it can be copied
+into private judge instructions; do not paste it into source control or public
+Devpost text.
 
 ## Deployment evidence gate
 
