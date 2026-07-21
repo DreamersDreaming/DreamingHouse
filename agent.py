@@ -198,6 +198,46 @@ def invoke_bedrock(prompt: str) -> str:
     return validate_reflection(response["output"]["message"]["content"][0]["text"])
 
 
+def write_reflection_run(
+    database_url: str,
+    *,
+    user_id: str,
+    current_memory_id: str,
+    retrieved_memory_ids: list[str],
+    model_id: str,
+    status: str,
+    reflection: str | None = None,
+    error: str | None = None,
+) -> str:
+    """Persist a bounded audit record for both successful and failed model calls."""
+    import psycopg
+
+    with psycopg.connect(database_url) as connection:
+        with connection.transaction():
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO reflection_runs
+                        (user_id, current_memory_id, retrieved_memory_ids,
+                         reflection, model_id, status, error)
+                    VALUES (%(user_id)s::UUID, %(current_memory_id)s::UUID,
+                            %(retrieved_memory_ids)s::UUID[], %(reflection)s,
+                            %(model_id)s, %(status)s, %(error)s)
+                    RETURNING id
+                    """,
+                    {
+                        "user_id": user_id,
+                        "current_memory_id": current_memory_id,
+                        "retrieved_memory_ids": retrieved_memory_ids,
+                        "reflection": reflection,
+                        "model_id": model_id,
+                        "status": status,
+                        "error": error,
+                    },
+                )
+                return str(cursor.fetchone()[0])
+
+
 def process_dream(dream: DreamInput, database_url: str) -> dict:
     """Commit memory first, call Bedrock without a DB lock, then audit."""
     import psycopg
@@ -246,36 +286,35 @@ def process_dream(dream: DreamInput, database_url: str) -> dict:
                     for row in cursor.fetchall()
                 ]
 
-    reflection = invoke_bedrock(build_reflection_prompt(dream, memories))
     retrieved_ids = [memory["id"] for memory in memories]
+    try:
+        reflection = invoke_bedrock(build_reflection_prompt(dream, memories))
+    except Exception as exc:
+        write_reflection_run(
+            database_url,
+            user_id=dream.user_id,
+            current_memory_id=str(current_memory_id),
+            retrieved_memory_ids=retrieved_ids,
+            model_id=model_id,
+            status="failed",
+            error=f"{type(exc).__name__}: reflection generation failed",
+        )
+        raise
 
-    with psycopg.connect(database_url) as connection:
-        with connection.transaction():
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO reflection_runs
-                        (user_id, current_memory_id, retrieved_memory_ids,
-                         reflection, model_id)
-                    VALUES (%(user_id)s::UUID, %(current_memory_id)s::UUID,
-                            %(retrieved_memory_ids)s::UUID[], %(reflection)s,
-                            %(model_id)s)
-                    RETURNING id
-                    """,
-                    {
-                        "user_id": dream.user_id,
-                        "current_memory_id": str(current_memory_id),
-                        "retrieved_memory_ids": retrieved_ids,
-                        "reflection": reflection,
-                        "model_id": model_id,
-                    },
-                )
-                run_id = cursor.fetchone()[0]
+    run_id = write_reflection_run(
+        database_url,
+        user_id=dream.user_id,
+        current_memory_id=str(current_memory_id),
+        retrieved_memory_ids=retrieved_ids,
+        model_id=model_id,
+        status="succeeded",
+        reflection=reflection,
+    )
 
     return {
         "status": "ok",
         "memory_id": str(current_memory_id),
-        "reflection_run_id": str(run_id),
+        "reflection_run_id": run_id,
         "retrieved_memory_ids": retrieved_ids,
         "reflection": reflection,
         "model_id": model_id,
