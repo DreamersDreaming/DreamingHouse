@@ -65,6 +65,10 @@ def html_response() -> dict:
             "cache-control": "no-store",
             "x-content-type-options": "nosniff",
             "referrer-policy": "no-referrer",
+            "content-security-policy": (
+                "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
+                "connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"
+            ),
         },
         "body": html,
     }
