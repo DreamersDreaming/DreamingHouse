@@ -15,6 +15,14 @@ BOUNDARY = (
     "predict the future, claim supernatural meaning, or add facts. Use tentative language."
 )
 
+MAX_SCENE_CHARS = 1_200
+MAX_EMOTION_CHARS = 200
+MAX_CONTEXT_CHARS = 1_200
+MAX_SUMMARY_CHARS = 2_000
+MAX_PATTERN_CHARS = 500
+MAX_PATTERNS = 5
+MAX_QUESTION_CHARS = 500
+
 
 @dataclass(frozen=True)
 class DreamInput:
@@ -25,8 +33,14 @@ class DreamInput:
 
     @classmethod
     def from_payload(cls, payload: dict) -> "DreamInput":
+        if not isinstance(payload, dict):
+            raise ValueError("request body must be a JSON object")
         user_id = str(payload.get("user_id", "")).strip()
         scene = " ".join(str(payload.get("scene", "")).split())
+        emotion = " ".join(str(payload.get("emotion", "")).split())
+        real_life_context = " ".join(
+            str(payload.get("real_life_context", "")).split()
+        )
         if not user_id:
             raise ValueError("user_id is required")
         try:
@@ -35,13 +49,17 @@ class DreamInput:
             raise ValueError("user_id must be a valid UUID") from exc
         if not scene:
             raise ValueError("scene is required")
-        if len(scene) > 1_200:
+        if len(scene) > MAX_SCENE_CHARS:
             raise ValueError("scene must be 1,200 characters or fewer")
+        if len(emotion) > MAX_EMOTION_CHARS:
+            raise ValueError("emotion must be 200 characters or fewer")
+        if len(real_life_context) > MAX_CONTEXT_CHARS:
+            raise ValueError("real_life_context must be 1,200 characters or fewer")
         return cls(
             user_id=user_id,
             scene=scene,
-            emotion=" ".join(str(payload.get("emotion", "")).split()),
-            real_life_context=" ".join(str(payload.get("real_life_context", "")).split()),
+            emotion=emotion,
+            real_life_context=real_life_context,
         )
 
 
@@ -114,6 +132,50 @@ def vector_literal(embedding: Iterable[float]) -> str:
     return "[" + ",".join(f"{value:.9g}" for value in values) + "]"
 
 
+def validate_reflection(raw: str) -> str:
+    """Accept only the bounded JSON shape promised to callers and the audit log."""
+    try:
+        payload = json.loads(raw)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Bedrock reflection was not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("Bedrock reflection must be a JSON object")
+    if set(payload) != {"summary", "recurring_patterns", "one_gentle_question"}:
+        raise RuntimeError("Bedrock reflection returned an unexpected schema")
+
+    summary = payload["summary"]
+    patterns = payload["recurring_patterns"]
+    question = payload["one_gentle_question"]
+    if not isinstance(summary, str) or not summary.strip() or len(summary) > MAX_SUMMARY_CHARS:
+        raise RuntimeError("Bedrock reflection summary is invalid")
+    if (
+        not isinstance(patterns, list)
+        or len(patterns) > MAX_PATTERNS
+        or any(
+            not isinstance(item, str)
+            or not item.strip()
+            or len(item) > MAX_PATTERN_CHARS
+            for item in patterns
+        )
+    ):
+        raise RuntimeError("Bedrock reflection patterns are invalid")
+    if (
+        not isinstance(question, str)
+        or not question.strip()
+        or len(question) > MAX_QUESTION_CHARS
+    ):
+        raise RuntimeError("Bedrock reflection question is invalid")
+
+    return json.dumps(
+        {
+            "summary": summary.strip(),
+            "recurring_patterns": [item.strip() for item in patterns],
+            "one_gentle_question": question.strip(),
+        },
+        ensure_ascii=False,
+    )
+
+
 def invoke_bedrock(prompt: str) -> str:
     import boto3
 
@@ -126,11 +188,11 @@ def invoke_bedrock(prompt: str) -> str:
         messages=[{"role": "user", "content": [{"text": prompt}]}],
         inferenceConfig={"temperature": 0.2, "maxTokens": 700},
     )
-    return response["output"]["message"]["content"][0]["text"]
+    return validate_reflection(response["output"]["message"]["content"][0]["text"])
 
 
 def process_dream(dream: DreamInput, database_url: str) -> dict:
-    """Run remember → retrieve → reflect → audit in one DB transaction."""
+    """Commit memory first, call Bedrock without a DB lock, then audit."""
     import psycopg
 
     embedding = invoke_embedding(memory_text(dream))
@@ -177,8 +239,12 @@ def process_dream(dream: DreamInput, database_url: str) -> dict:
                     for row in cursor.fetchall()
                 ]
 
-                reflection = invoke_bedrock(build_reflection_prompt(dream, memories))
-                retrieved_ids = [memory["id"] for memory in memories]
+    reflection = invoke_bedrock(build_reflection_prompt(dream, memories))
+    retrieved_ids = [memory["id"] for memory in memories]
+
+    with psycopg.connect(database_url) as connection:
+        with connection.transaction():
+            with connection.cursor() as cursor:
                 cursor.execute(
                     """
                     INSERT INTO reflection_runs
