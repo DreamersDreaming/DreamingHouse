@@ -28,8 +28,8 @@
       <label for="key">Judge demo key</label><input id="key" type="password" autocomplete="off" required>
       <label for="user">Private session UUID</label><input id="user" required>
       <label for="scene">One remembered scene</label><textarea id="scene" maxlength="1200" required>A blue whale crossed the stars above a quiet boat.</textarea>
-      <label for="emotion">Emotion (optional)</label><input id="emotion" value="wonder">
-      <label for="context">Real-life context (optional)</label><input id="context" placeholder="Only what you choose to supply">
+      <label for="emotion">Emotion (optional)</label><input id="emotion" maxlength="200" value="wonder">
+      <label for="context">Real-life context (optional)</label><input id="context" maxlength="1200" placeholder="Only what you choose to supply">
       <button id="submit" type="submit">Remember and reflect</button>
       <p class="note">Use the same UUID twice to show durable CockroachDB retrieval. Demo data only—never enter a real private dream.</p>
     </form>
