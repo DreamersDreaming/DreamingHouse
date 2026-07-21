@@ -46,6 +46,7 @@ Resources:
     Properties:
       CodeUri: .
       Handler: lambda_function.handler
+      ReservedConcurrentExecutions: 2
       Policies:
         - Statement:
             - Effect: Allow
