@@ -21,7 +21,10 @@ CREATE TABLE IF NOT EXISTS reflection_runs (
   user_id UUID NOT NULL,
   current_memory_id UUID NOT NULL REFERENCES dream_memories(id),
   retrieved_memory_ids UUID[] NOT NULL DEFAULT ARRAY[]::UUID[],
-  reflection STRING NOT NULL,
+  reflection STRING,
   model_id STRING NOT NULL,
+  status STRING NOT NULL DEFAULT 'succeeded'
+    CHECK (status IN ('succeeded', 'failed')),
+  error STRING,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
