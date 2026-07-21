@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Doream Recall agentic dream memory demo on AWS Lambda and Bedrock
+
+Parameters:
+  DatabaseUrl:
+    Type: String
+    NoEcho: true
+    Description: CockroachDB Cloud connection string for a least-privilege user
+  DemoApiKey:
+    Type: String
+    NoEcho: true
+    MinLength: 20
+    Description: Private key supplied to hackathon judges for the demo endpoint
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+    Timeout: 30
+    MemorySize: 512
+    Environment:
+      Variables:
+        DATABASE_URL: !Ref DatabaseUrl
+        DEMO_API_KEY: !Ref DemoApiKey
+        BEDROCK_MODEL_ID: amazon.nova-lite-v1:0
+        BEDROCK_EMBEDDING_MODEL_ID: amazon.titan-embed-text-v2:0
+
+Resources:
+  RecallApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: Prod
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowHeaders:
+          - content-type
+          - x-doream-demo-key
+        AllowMethods:
+          - POST
+
+  RecallFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: lambda_function.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource:
+                - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.nova-lite-v1:0
+                - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v2:0
+      Events:
+        Reflect:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RecallApi
+            Path: /reflect
+            Method: POST
+            PayloadFormatVersion: '2.0'
+
+Outputs:
+  ReflectEndpoint:
+    Description: POST endpoint for the private judge demo
+    Value: !Sub https://${RecallApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/Prod/reflect
