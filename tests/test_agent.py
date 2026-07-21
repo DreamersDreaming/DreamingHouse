@@ -60,6 +60,15 @@ class MemoryBoundaryTests(unittest.TestCase):
 
 
 class LambdaHandlerTests(unittest.TestCase):
+    def test_get_returns_demo_page(self):
+        result = handler(
+            {"requestContext": {"http": {"method": "GET"}}},
+            None,
+        )
+        self.assertEqual(result["statusCode"], 200)
+        self.assertIn("Doream Recall", result["body"])
+        self.assertEqual(result["headers"]["cache-control"], "no-store")
+
     @patch("lambda_function.process_dream")
     def test_success_response_is_private_and_structured(self, process_dream_mock):
         process_dream_mock.return_value = {"status": "ok", "reflection": "{}"}
