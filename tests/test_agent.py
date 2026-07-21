@@ -13,6 +13,7 @@ from agent import (
     vector_literal,
 )
 from lambda_function import handler
+from scripts.bootstrap_database import database_url, replace_database_and_user
 
 
 class DreamInputTests(unittest.TestCase):
@@ -106,6 +107,29 @@ class MemoryBoundaryTests(unittest.TestCase):
             validate_reflection(
                 '{"summary":"A","recurring_patterns":[],"one_gentle_question":"Q","prediction":"bad"}'
             )
+
+
+class DatabaseBootstrapTests(unittest.TestCase):
+    def test_replaces_database_and_credentials_without_losing_ssl_query(self):
+        result = replace_database_and_user(
+            "postgresql://admin:old@cluster.example:26257/defaultdb?sslmode=verify-full",
+            "doream_recall",
+            "doream_app",
+            "p@ss/word",
+        )
+        self.assertEqual(
+            result,
+            "postgresql://doream_app:p%40ss%2Fword@cluster.example:26257/doream_recall?sslmode=verify-full",
+        )
+
+    def test_changes_database_but_preserves_admin_credentials(self):
+        self.assertEqual(
+            database_url(
+                "postgresql://admin:old@cluster.example/defaultdb?sslmode=require",
+                "doream_recall",
+            ),
+            "postgresql://admin:old@cluster.example/doream_recall?sslmode=require",
+        )
 
 
 class LambdaHandlerTests(unittest.TestCase):
