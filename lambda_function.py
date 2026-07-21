@@ -5,12 +5,18 @@ from __future__ import annotations
 import json
 import os
 import hmac
+from pathlib import Path
 
 from agent import DreamInput, process_dream
 
 
 def handler(event, _context):
     try:
+        method = (
+            event.get("requestContext", {}).get("http", {}).get("method", "POST")
+        ).upper()
+        if method == "GET":
+            return html_response()
         enforce_demo_api_key(event)
         body = event.get("body", event)
         if isinstance(body, str):
@@ -38,6 +44,22 @@ def handler(event, _context):
                 "message": "The private memory agent could not complete this request.",
             },
         )
+
+
+def html_response() -> dict:
+    html = Path(__file__).with_name("static").joinpath("index.html").read_text(
+        encoding="utf-8"
+    )
+    return {
+        "statusCode": 200,
+        "headers": {
+            "content-type": "text/html; charset=utf-8",
+            "cache-control": "no-store",
+            "x-content-type-options": "nosniff",
+            "referrer-policy": "no-referrer",
+        },
+        "body": html,
+    }
 
 
 def enforce_demo_api_key(event: dict) -> None:
