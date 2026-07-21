@@ -58,6 +58,8 @@ The vector index uses `user_id` as a prefix column. Every retrieval query constr
 
 The included AWS SAM template creates an HTTP API and Python 3.12 Lambda with least-privilege permission to invoke Amazon Nova Lite and Amazon Titan Text Embeddings V2.
 
+The same Lambda serves a small judge-facing browser demo at `GET /`; `POST /reflect` runs the agent. The page asks for a private demo key and generates a random session UUID locally.
+
 ```bash
 sam build
 sam deploy --guided \
