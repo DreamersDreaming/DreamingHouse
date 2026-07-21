@@ -2,14 +2,15 @@
 set -euo pipefail
 
 # Intended for AWS CloudShell in ap-southeast-2 (Sydney). The script never
-# prints the CockroachDB URL or the generated judge key.
+# prints the CockroachDB URLs. It prints the generated judge key only after
+# deployment so the founder can copy it into private judge instructions.
 export AWS_REGION="${AWS_REGION:-ap-southeast-2}"
 export AWS_DEFAULT_REGION="$AWS_REGION"
 
-if [[ -z "${DATABASE_URL:-}" ]]; then
-  read -r -s -p "CockroachDB DATABASE_URL: " DATABASE_URL
+if [[ -z "${COCKROACH_ADMIN_URL:-}" ]]; then
+  read -r -s -p "CockroachDB administrator connection URL: " COCKROACH_ADMIN_URL
   printf '\n'
-  export DATABASE_URL
+  export COCKROACH_ADMIN_URL
 fi
 
 if [[ -z "${DEMO_API_KEY:-}" ]]; then
@@ -18,7 +19,9 @@ if [[ -z "${DEMO_API_KEY:-}" ]]; then
 fi
 
 python3 -m pip install --user -r requirements.txt
-python3 scripts/apply_schema.py
+DATABASE_URL="$(python3 scripts/bootstrap_database.py)"
+export DATABASE_URL
+unset COCKROACH_ADMIN_URL
 
 sam build
 sam deploy \
